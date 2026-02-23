@@ -4,6 +4,8 @@ from bs4 import BeautifulSoup
 
 from .html_util import sort_h_tags_with_hierarchy
 
+def add_br(match):
+    return match.group(0).replace("\n", "<br>\n")
 
 def beautify_content(content):
     """
@@ -85,6 +87,9 @@ def beautify_content(content):
     # Assemble pre blocks
     for key, block in pre_blocks.items():
         content = content.replace(key, block)
+        
+    # Add line breaks in Paragraph
+    content = re.sub(r"<p>.*?</p>", add_br, content, flags=re.DOTALL)
 
     return content
 
