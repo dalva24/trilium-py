@@ -5,9 +5,9 @@ import sys
 import urllib.parse
 from collections import deque
 from collections.abc import Mapping
-from datetime import datetime, timedelta
-from typing import Literal
-from typing import Optional, Union
+from datetime import datetime, timezone, timedelta
+from typing import Literal, Optional, Union
+from dateutil.tz import tzlocal
 
 import mimetypes
 import markdown2
@@ -135,6 +135,7 @@ class ETAPI:
             isExpanded: Optional[str] = None,
             noteId: Optional[str] = None,
             branchId: Optional[str] = None,
+            dateCreated: Optional[str] = None
     ) -> dict:
         """
         Actually it's create or update,
@@ -150,6 +151,7 @@ class ETAPI:
         :param isExpanded:
         :param noteId:
         :param branchId:
+        :param dateCreated:
         :return:
         """
         url = f'{self.server_url}/etapi/create-note'
@@ -165,7 +167,9 @@ class ETAPI:
             "isExpanded": isExpanded,
             "noteId": noteId,
             "branchId": branchId,
+            "dateCreated": dateCreated,
         }
+        
         res = requests.post(url, json=clean_param(params), headers=self.get_header())
 
         return res.json()
@@ -952,7 +956,14 @@ class ETAPI:
 
         return
 
-    def upload_md_file(self, file: str, parentNoteId: str, parse_math: bool = True, image_and_file_as_attachments: bool = True):
+    def upload_md_file(
+            self, file: str, 
+            parentNoteId: str, 
+            parse_math: bool = True, 
+            image_and_file_as_attachments: bool = True,
+            hasFrontMatter: bool = False,
+            cleanText: bool = False
+    ):
         md_file = os.path.abspath(file).replace('\\', '/').replace('//', '/')
         md_full_name = os.path.basename(md_file)
         md_name = md_full_name[:-3]
@@ -964,6 +975,36 @@ class ETAPI:
         # convert md to html
         with open(md_file, 'r', encoding='utf-8') as f:
             content = f.read()
+            
+            utcDateCreated = None
+            dateCreated = None
+            
+            if hasFrontMatter:
+                
+                # Extract and strip FrontMatter (delimited by leading ---)
+                frontmatter_match = re.match(r'^---\n(.*?)\n---\n', content, re.DOTALL)
+                if frontmatter_match:
+                    frontmatter = frontmatter_match.group(1)
+                    content = content[frontmatter_match.end():]
+
+                    # Extract the 'created' key from FrontMatter
+                    created_match = re.search(r'^created:\s*(.+)$', frontmatter, re.MULTILINE)
+                    if created_match:
+                        created_raw = created_match.group(1).strip()
+                        # Normalise to millisecond precision: "YYYY-MM-DD HH:MM:SS.mmmZ"
+                        # Input may be "YYYY-MM-DD HH:MM:SSZ" (no millis) or already have them
+                        ts_match = re.match(r'^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})(\.\d+)?(Z?)$', created_raw)
+                        if ts_match:
+                            base, millis, tz = ts_match.groups()
+                            millis = (millis or '.000')[:4].ljust(4, '0')  # ensure exactly .mmm
+                            utcDateCreated = f"{base}{millis}Z"
+                            
+                            # Convert to local timezone
+                            dt_utc = datetime.strptime(f"{base}{millis}", "%Y-%m-%d %H:%M:%S.%f").replace(tzinfo=timezone.utc)
+                            local_tz = tzlocal()
+                            dt_local = dt_utc.astimezone(local_tz)
+                            utc_offset = dt_local.strftime("%z")  # e.g. "+0900"
+                            dateCreated = dt_local.strftime("%Y-%m-%d %H:%M:%S.") + f"{dt_local.microsecond // 1000:03d}{utc_offset}"
 
             # fix logseq image size format
             logseq_image_pat = r'(\!\[.*\]\(.*\))\{.*?:height.*width.*}'
@@ -977,6 +1018,10 @@ class ETAPI:
                     content,
                     extras=['fenced-code-blocks', 'strike', 'tables', 'task_list', 'code-friendly'],
                 )
+                
+                if cleanText:
+                    html = beautify_content(html)
+                
                 # logger.info(html)
             else:
                 # Parse math formulas
@@ -1005,6 +1050,7 @@ class ETAPI:
             title=md_name,
             type="text",
             content=html,
+            dateCreated=dateCreated
         )
         note_id = current_note_res['note']['noteId']
         # logger.info(note_id)
@@ -1166,6 +1212,8 @@ class ETAPI:
             ignoreFolder: Optional[list[str]] = None,
             ignoreFile: Optional[list[str]] = None,
             parse_math: bool = True,
+            hasFrontMatter: Optional[bool] = False,
+            cleanText: Optional[bool] = False
     ):
         includePattern = includePattern or ['.md']
         ignoreFolder = ignoreFolder or []
@@ -1203,7 +1251,7 @@ class ETAPI:
                     file_path = os.path.join(root, name)
                     logger.info(file_path)
                     try:
-                        self.upload_md_file(file=file_path, parentNoteId=current_parent_note_id, parse_math=parse_math)
+                        self.upload_md_file(file=file_path, parentNoteId=current_parent_note_id, parse_math=parse_math, hasFrontMatter=hasFrontMatter, cleanText=cleanText)
                     except Exception as e:
                         error_files[os.path.abspath(file_path)] = e
 

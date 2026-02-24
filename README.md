@@ -190,11 +190,13 @@ res = ea.create_note(
     title="Simple note 1",
     type="text",
     content="Simple note example",
-    noteId="note1"
+    noteId="note1",
+	dateCreated="2026-01-01 12:34:56.000+0900",
 )
 ```
 
 The `noteId` is not mandatory, if not provided, Trilium will generate a random one. You can retrieve it in the return.
+`dateCreated` is also not mandatory. It can be used to assist importing notes from other apps, preserving creation date.
 
 ```python
 noteId = res['note']['noteId']
@@ -498,8 +500,23 @@ links for you!
 res = ea.upload_md_file(
     parentNoteId="root",
     file="./md-demo/manjaro 修改caps lock.md",
+	hasFrontMatter=False,
+	cleanText=False
 )
 ```
+
+`hasFrontMatter` is optional. If set to true, it is expected that the markdown file has front matter block such as:
+```markdown
+---
+title: NoteTitle
+updated: 2026-01-01 12:45:56Z
+created: 2026-01-01 12:34:56Z
+latitude: 10.1234
+longitude: 100.1234
+altitude: 0.0000
+---
+```
+`cleanText` is optional. If set to true, it will tidy up the note import, including adding paragraph breaks.
 
 ### Disable math formula parsing
 
@@ -532,15 +549,23 @@ res = ea.upload_md_folder(
 
 #### Import from Joplin
 
-Joplin can be imported effortlessly.
+To import from Joplin, first extract your Joplin notes to Markdown + Front Matter:
+
+`File > Export All > MD - Markdown + Front Matter`
+
+Then run the following snippet, replacing `mdFolder` to your actual exported notes location.
 
 ```python
 res = ea.upload_md_folder(
     parentNoteId="root",
     mdFolder="/home/nate/data/joplin_data/",
     ignoreFolder=['_resources', ],
+    hasFrontMatter=True,
+    cleanText=True
 )
 ```
+
+Importing with Front Matter will ensure consistent note creation time.
 
 #### Import from Logseq
 
