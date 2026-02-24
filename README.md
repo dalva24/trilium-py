@@ -191,7 +191,7 @@ res = ea.create_note(
     type="text",
     content="Simple note example",
     noteId="note1",
-	dateCreated="2026-01-01 12:34:56.000+0900",
+    dateCreated="2026-01-01 12:34:56.000+0900",
 )
 ```
 
@@ -500,8 +500,8 @@ links for you!
 res = ea.upload_md_file(
     parentNoteId="root",
     file="./md-demo/manjaro 修改caps lock.md",
-	hasFrontMatter=False,
-	cleanText=False
+    hasFrontMatter=False,
+    cleanText=False
 )
 ```
 
